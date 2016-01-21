@@ -375,7 +375,7 @@ else:
     cell = arcpy.GetRasterProperties_management(sourceRaster, "CELLSIZEX").getOutput(0)
 
     if not str(cell) == CellSize:
-        arcpy.AddWarning("\tResampling Cost Surface to " + CellSize + " meter cells...")
+        arcpy.AddMessage("\tResampling Cost Surface to " + CellSize + " meter cells...")
         xxResample = arcpy.Resample_management(sourceRaster, 'in_memory\\xxResample', CellSize, "NEAREST").getOutput(0)
         sourceRaster = xxResample
 
@@ -511,10 +511,10 @@ arcpy.SetParameterAsText(14, outRaster)
 os.remove(cs_ini)
 arcpy.Delete_management(curTemp)
 arcpy.Delete_management("in_memory")
-try:
-    arcpy.Delete_management(lcLayer)
-except:
-    pass
+##try:
+##    arcpy.Delete_management(lcLayer)
+##except:
+##    pass
 
 try:
     arcpy.Delete_management(elevLayer)
