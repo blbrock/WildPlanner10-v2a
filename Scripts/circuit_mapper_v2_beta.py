@@ -56,10 +56,11 @@ viewShed = sys.argv[8]
 elevLayer = sys.argv[9]
 CellSize = sys.argv[10]
 mask = sys.argv[11]
-outName = sys.argv[12]
-iZones = sys.argv[13]
-output = sys.argv[14]
-outZones = sys.argv[15]
+mode = sys.argv[12]
+outName = sys.argv[13]
+iZones = sys.argv[14]
+output = sys.argv[15]
+outZones = sys.argv[16]
 scriptpath = sys.path[0]
 
 ## Set up output geodatabse
@@ -141,6 +142,45 @@ except:
     CellSize = '90'
     arcpy.env.cellSize = '90'
     
+def find_cs():
+# Check location of cs_run.exe and change path if found in a different location
+    filename = "cs_run.exe"
+    n = False
+
+    if os.path.exists(lp.cs_path):
+        arcpy.AddMessage('\tcs_run.exe found...')
+    else:
+        arcpy.AddWarning("\tCircuitscape executable not found at default location. \n\tSearching C: drive for file...")
+        for root, dirs, names in os.walk("c:\\"):
+            if filename in names:
+                n = os.path.join(root, filename)
+                n = n.replace('\\', '\\\\')
+                arcpy.AddMessage("\tCircuitscape executable found at: " + n)
+                arcpy.AddMessage("\tUpdating local copy of script with new Circuitscape path...")
+                print n
+
+                # paramFile  = sys.argv[0]
+                old = os.path.dirname(sys.argv[0]) + os.sep + "local_params.py"
+                new = os.path.dirname(sys.argv[0]) + os.sep + "local_params.txt"
+                f = open( old, 'r' ) 
+                temp = open(new, 'w')
+                for line in f:
+                    if "cs_path = " in line:
+                        l = line.replace(line, "cs_path = '" + n) + "'\n"
+                    else:
+                        l = line
+                    print l
+                    temp.write(l)
+                f.close()
+
+                temp.close()
+                os.remove(old)
+                os.rename(new, old)
+                break
+        else:
+            arcpy.AddError('Circuitscape executable not found. Make sure Circuitscape is insalled \nor manually edit the cs_path variable in local_params.py')
+
+
 # Get threshold distance
 distance = threshDist.split(" ")
 threshDist = str(ConvertDistanceToMeters(distance[0], distance[1]))
@@ -393,6 +433,8 @@ if not SrcExt == costExtent:
     arcpy.AddMessage("\tExtracting source raster to cost raster extent...")
     sourceRaster = arcpy.sa.ExtractByMask (sourceRaster, costRaster)
 
+# Remove zero values from source raster
+sourceRaster = arcpy.sa.SetNull(sourceRaster, sourceRaster, "Value <= 0")
 # Save source raster to output gdb
 sourceRaster.save(outGDB + os.sep + baseName + "_sourceRaster")
 
@@ -428,47 +470,18 @@ for line in fileinput.input( cs_ini):
     tempFile.write( line.replace( "%HABITAT%", costName ) )
 tempFile.close()
 
+tempFile = open( cs_ini, 'r+' )
+for line in fileinput.input( cs_ini):
+    tempFile.write( line.replace( "%MODE%", mode ) )
+tempFile.close()
+
 # Run Circuitscape
 arcpy.AddMessage("\tExecuting Circuitscape...")
 cs_ini = cs_ini.replace("\\", "\\\\")
 
-# Check location of cs_run.exe and change path if found in a different location
-filename = "cs_run.exe"
-n = False
+# Make sure Circuitscape is installed on computer
+find_cs()
 
-if os.path.exists(lp.cs_path):
-    arcpy.AddMessage('\tcs_run.exe found...')
-else:
-    arcpy.AddWarning("\tCircuitscape executable not found at default location. \n\tSearching C: drive for file...")
-    for root, dirs, names in os.walk("c:\\"):
-        if filename in names:
-            n = os.path.join(root, filename)
-            n = n.replace('\\', '\\\\')
-            arcpy.AddMessage("\tCircuitscape executable found at: " + n)
-            arcpy.AddMessage("\tUpdating local copy of script with new Circuitscape path...")
-            print n
-
-            # paramFile  = sys.argv[0]
-            old = os.path.dirname(sys.argv[0]) + os.sep + "local_params.py"
-            new = os.path.dirname(sys.argv[0]) + os.sep + "local_params.txt"
-            f = open( old, 'r' ) 
-            temp = open(new, 'w')
-            for line in f:
-                if "cs_path = " in line:
-                    l = line.replace(line, "cs_path = '" + n) + "'\n"
-                else:
-                    l = line
-                print l
-                temp.write(l)
-            f.close()
-
-            temp.close()
-            os.remove(old)
-            os.rename(new, old)
-            break
-    else:
-        arcpy.AddError('Circuitscape executable not found. Make sure Circuitscape is insalled \nor manually edit the cs_path variable in local_params.py')
-        
 inASCII = outName + "_cum_curmap.asc"
 outRaster = outGDB + os.sep + baseName + "_cum_curmap"
 # curTemp = os.path.dirname(outName) + os.sep + "curTemp.img"
@@ -481,7 +494,6 @@ os.system('"' + lp.cs_path + '" ' + cs_ini)
 
 arcpy.AddMessage("\tSetting Source Areas to NULL...")
 sourceName = arcpy.sa.Con(arcpy.sa.IsNull(sourceRaster),-9999, sourceRaster)
-#curTemp = arcpy.sa.Con(sourceName,inASCII, "", "Value = 0")
 curTemp = arcpy.sa.SetNull(sourceName, inASCII, "Value <> -9999")
 
 if arcpy.Describe(curTemp).SpatialReference.name == 'Unknown':
@@ -495,16 +507,20 @@ arcpy.AddMessage("\tComputing Final Raster Statistics...")
 arcpy.CalculateStatistics_management(outRaster)
 
 # delete resistance output file if it exists
-name = outName + "_resistances_3columns.out"
-if os.path.exists(name):
-    os.remove(name)
-n = name.split(".")
-os.rename(n[0], name)
+try:
+    name = outName + "_resistances_3columns.out"
+    if os.path.exists(name):
+        os.remove(name)
+    n = name.split(".")
+    os.rename(n[0], name)
+except:
+    pass
+
 #Add outputs to display
 if  iZones == "true":
-    arcpy.SetParameterAsText(13, outZones)
+    arcpy.SetParameterAsText(14, outZones)
 
-arcpy.SetParameterAsText(14, outRaster)
+arcpy.SetParameterAsText(15, outRaster)
 
 
 # Clean up temporary workspace
