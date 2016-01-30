@@ -86,8 +86,9 @@ gp.ScratchWorkspace = tWorkspace
 
 # Local variables...
 
+pkg = sim_package()
 area = minCoreSize.split(" ")
-minCoreSize = str(ConvertAreaToMeters(area[0], area[1]))
+pkg.minCoreSize = str(ConvertAreaToMeters(area[0], area[1]))
 if outputUnits == "" or outputUnits == "#":
     outputUnits = area[1]
 gp.AddMessage("Minimum Patch Size: " + str(minCoreSize) + " square meters...")
@@ -95,16 +96,16 @@ del area
 
 # Convert influence distances to meters
 stdistance = stinfDistance.split(" ")
-stinfDistance = str(ConvertDistanceToMeters(stdistance[0], stdistance[1]))
+pkg.stinfDistance = str(ConvertDistanceToMeters(stdistance[0], stdistance[1]))
 gp.AddMessage("Structure Distance: " + str(stinfDistance) + " meters...")
 del stdistance
 
 # If road influence distance is blank, set to equal structure distance
 if rdinfDistance == '#' or rdinfDistance == '':
-    rdinfDistance = stinfDistance
+    pkg.rdinfDistance = stinfDistance
 else:
     rddistance = rdinfDistance.split(" ")
-    rdinfDistance = str(ConvertDistanceToMeters(rddistance[0],rddistance[1]))
+    pkg.rdinfDistance = str(ConvertDistanceToMeters(rddistance[0],rddistance[1]))
     gp.AddMessage("Road Distance: " + str(rdinfDistance) + " meters...")
     del rddistance
 
@@ -114,8 +115,8 @@ else:
 ##del distance
 
 cExtent = tWorkspace+"\\aExtent_copy.shp" #Temporary copy of analysis extent for manipulation
-nTable = outWorkspace+"\\"+outTable #Final output table
-i = int(i)
+pkg.nTable = outWorkspace+"\\"+outTable #Final output table
+pkg.i = int(i)
 endSim = False
 target = int(target)
 low = target - (target * 0.05)
@@ -136,6 +137,8 @@ else:
     gp.MakeFeatureLayer_management(constraintLayer, "tempLayer", "", "", "Input_FID Input_FID VISIBLE NONE")
     gp.Clip_analysis("tempLayer", aExtent, sWorkspace + "\\clip_constraint.shp", "")
     constraintLayer = sWorkspace + "\\clip_constraint.shp"
+pkg.constraint = constraintLayer
+pkg.aExtent = aExtent
     
 ##Calculate Total Area and store in variable 'tArea'##
 gp.AddMessage("Caculating area of analysis extent...")
@@ -150,7 +153,7 @@ except:
 CalcArea(cExtent)
 CalcArea(constraintLayer)
 # Calculate total area of analysis extent
-tArea = CalcTotalArea(gp.ScratchWorkspace, cExtent)
+pkg.tArea = CalcTotalArea(gp.ScratchWorkspace, cExtent)
 gp.AddMessage("Total Analysis Area = " + str(tArea))
 cArea = CalcTotalArea(gp.ScratchWorkspace, constraintLayer)
 gp.AddMessage("Total Buildable Area = " + str(cArea))
@@ -183,7 +186,7 @@ gp.AddMessage("Calculating number of houses for first simulation run...")
 numHouses = MAX / 2 # Set initial seed for number of houses
 if numHouses == 0:
     numHouses = 1
-numHouses = str(numHouses)
+pkg.numHouses = str(numHouses)
 
 #FIX#### Need to test whether target is obtainable before processing##########
 ### Check if target is attainable with given parameters. Raise error if target is invalid.
@@ -219,8 +222,8 @@ if not gp.Exists(nTable):
 
 # Create road cost surface for simulating road networks
 rdcst = CreateRoadCost(elevLayer, "", existRoads, tWorkspace)
-outRdCost = rdcst[0]
-backlink = rdcst[1]
+pkg.outRdCost = rdcst[0]
+pkg.backlink = rdcst[1]
 
 while result < low or result >= high and not endSim: 
     
@@ -248,9 +251,9 @@ while result < low or result >= high and not endSim:
             endSim = True
             break
             #Store descriptors for output if target cannot be reached
-        
+    pkg.random = True
     #Run simulation
-    sim = RunSimulation(i,gp.ScratchWorkspace, aExtent, constraintLayer, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, "", "", True, outRdCost, backlink, existRoads)
+    sim = RunSimulation(i, aExtent, constraintLayer, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, "", "", True, outRdCost, backlink, existRoads)
     result = sim[0]
     rPoints = sim[1]
     count = count + 1     

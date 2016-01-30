@@ -44,6 +44,10 @@ gp.overwriteoutput = 1
 ## an 'Area' field actually exists.  If the field does exist, an error will be thrown
 ## when the function tries to create a new area field.  Running this same script in arcgis 9.3
 ## but using an arcgis 9.2 geoprocessor seems to work.
+
+class sim_package(object):
+        pass
+
 def CalcArea(inputFC):
         arcpy.AddMessage("\tCalculating area of polygon cores...")
         if not arcpy.ListFields(inputFC,"AREA"):
@@ -59,7 +63,7 @@ def CalcCorridorDistance(pointLayer, workspace):
         if workspace == '':
                 workspace = arcpy.env.Workspace
 
-        elif workspace == "in_memory":
+        elif workspace == arcpy.env.scratchGDB:
                 sumTable = workspace + os.sep + "Core_summary"
                 iTable = workspace + os.sep + "Iteration_summary"
         else:
@@ -89,9 +93,9 @@ def CalcCorridorDistance(pointLayer, workspace):
 def CalcMeans(inTable, workspace, theField, numHouses):
         arcpy.AddMessage("\tCalculating means for " + theField + " in table: " + inTable + "...")
         if workspace == '':
-                workspace = "in_memory"
+                workspace = arcpy.env.scratchGDB
 
-        elif workspace == "in_memory":
+        elif workspace == arcpy.env.scratchGDB:
                 mTable = workspace + os.sep + "mean_value"
                 
         else:
@@ -311,7 +315,7 @@ def CreateRoadCost (inDEM, inSlope, inRoads, outWorkspace):
         ##        outWorkspace = dName[0]
 
         # Create temporary workspaces
-        tWorkspace = CreateTempWorkspace(outWorkspace)
+        arcpy.env.scratchGDB = CreateTempWorkspace(outWorkspace)
 
         # Specify output filenames
         dName = inRoads.rsplit(os.sep,1)
@@ -322,12 +326,12 @@ def CreateRoadCost (inDEM, inSlope, inRoads, outWorkspace):
         outBacklink = dNamePath + "_bklnk"
 
         # Local variables...
-        outContour = tWorkspace + os.sep + "outContour.shp"
-        Contour_1 = tWorkspace + os.sep + "cRast"
-        Reclass_Cont2 = tWorkspace + os.sep + "Reclass_Cont2"
+        outContour = arcpy.env.scratchGDB + os.sep + "outContour"
+        Contour_1 = arcpy.env.scratchGDB + os.sep + "cRast"
+        Reclass_Cont2 = arcpy.env.scratchGDB + os.sep + "Reclass_Cont2"
 
         # Set cell size to input DEM
-        CstRaster = tWorkspace + os.sep + "CstRaster"
+        CstRaster = arcpy.env.scratchGDB + os.sep + "CstRaster"
         cellSize = str(gp.GetRasterProperties (inDEM, "CELLSIZEX"))
         
 ## UNCOMMENT THIS SECTION TO SPEED PROCESSING ##       
@@ -370,8 +374,8 @@ def CreateRoadCost (inDEM, inSlope, inRoads, outWorkspace):
         gp.CostDistance_sa(inRoads, CstRaster, outRdCost, "", outBacklink)
 
         # Clean up temporary workspace
-        CleanFiles(tWorkspace)
-        gp.Delete_management(tWorkspace,"")
+        CleanFiles(arcpy.env.scratchGDB)
+        gp.Delete_management(arcpy.env.scratchGDB,"")
 
         return outRdCost, outBacklink
 
@@ -410,40 +414,23 @@ def GenerateCores (pointLayer, workspace, aExtent, stinfDistance, rdinfDistance,
         #Set workspace
         if workspace == '':
                 workspace = arcpy.Workspace
-                
-##        #Create local variables
-##        pBuff = workspace + os.sep + "pointBuffer.shp"
-##        lBuff = workspace + os.sep + "lineBuffer.shp"
-##        polyLayer = workspace + os.sep + "polyLayer.shp"
-##        #lineLayer = workspace + os.sep + "lineLayer.shp"
-##        eraseLayer1 = workspace + os.sep + "eraseLayer1.shp"
-##        eraseLayer2 = workspace + os.sep + "eraseLayer2.shp"
-##        clip = workspace + os.sep + "clipLayer.shp"
-##        habitat = workspace + os.sep + "habitatPatches.shp"
 
         #Create local variables
-        pBuff = "in_memory" + os.sep + "pointBuffer"
-        lBuff = "in_memory" + os.sep + "lineBuffer"
-        polyLayer = "in_memory" + os.sep + "polyLayer"
+        pBuff = arcpy.env.scratchGDB + os.sep + "pointBuffer"
+        lBuff = arcpy.env.scratchGDB + os.sep + "lineBuffer"
+        polyLayer = arcpy.env.scratchGDB + os.sep + "polyLayer"
         #lineLayer = workspace + os.sep + "lineLayer.shp"
-        eraseLayer1 = "in_memory" + os.sep + "eraseLayer1"
-        eraseLayer2 = "in_memory" + os.sep + "eraseLayer2"
-        clip = "in_memory" + os.sep + "clipLayer"
-        habitat = "in_memory" + os.sep + "habitatPatches"
+        eraseLayer1 = arcpy.env.scratchGDB + os.sep + "eraseLayer1"
+        eraseLayer2 = arcpy.env.scratchGDB + os.sep + "eraseLayer2"
+        clip = arcpy.env.scratchGDB + os.sep + "clipLayer"
+        habitat = arcpy.env.scratchGDB + os.sep + "habitatPatches"
         selectDist = str(2*float(stinfDistance))
         
         empty = False
-        
-        # Set the analysis extent to aExtent
-##        desc = arcpy.Describe(aExtent)
-##        extent = desc.Extent
-##        arcpy.Extent = extent
         polyLayer = aExtent
         arcpy.env.extent = aExtent
         pLayer = arcpy.MakeFeatureLayer_management(pointLayer, "pLayer", "", "", "Input_FID Input_FID VISIBLE NONE")
         pointLayer = arcpy.SelectLayerByLocation_management(pLayer, "WITHIN_A_DISTANCE", aExtent, selectDist, "NEW_SELECTION")
-        ####
-        arcpy.CopyFeatures_management(pointLayer, "c:\\workspace\\default.gdb\\pointLayer")
 
 ## NOTE: Vector processing eliminated to improve performance.
 ##        try:
@@ -479,12 +466,9 @@ def GenerateCores (pointLayer, workspace, aExtent, stinfDistance, rdinfDistance,
         arcpy.AddMessage("\tCalculating euclidian distance from structures...")
         EucDist1 = arcpy.sa.EucDistance(pointLayer, "", "30", "")
 
-        #####
-        EucDist1.save("c:\\workspace\\default.gdb\\EucDist1")
         arcpy.AddMessage("\tSetting areas within " + str(stinfDistance) + " meters of structures to NULL...")
         SetNull1 = arcpy.sa.SetNull(EucDist1, "1", "Value < " + str(stinfDistance))
-        #####
-        SetNull1.save("c:\\workspace\\default.gdb\\SetNull1")
+
         arcpy.AddMessage("\tCalculating euclidian distance from roads...")
         EucDist2 = arcpy.sa.EucDistance(lineLayer, "", "30", "")
         arcpy.AddMessage("\tSetting areas within " + str(rdinfDistance) + " meters of roads to NULL...")
@@ -532,10 +516,10 @@ def GenRoads (inPoints, RdCost, backlink, outRoads):
         outWorkspace = r[0]
 
         # Create temporary workspaces
-        tWorkspace = CreateTempWorkspace(outWorkspace)
+        arcpy.env.scratchGDB = CreateTempWorkspace(outWorkspace)
 
         # Local variables...
-        Output_raster = tWorkspace + os.sep + "Costrast"
+        Output_raster = arcpy.env.scratchGDB + os.sep + "Costrast"
 
         # Process: Cost Path...
         gp.AddMessage("\tGenerating least-cost paths for roads...")
@@ -550,8 +534,8 @@ def GenRoads (inPoints, RdCost, backlink, outRoads):
 
 
         # Clean up temporary workspace
-        CleanFiles(tWorkspace)
-        gp.Delete_management(tWorkspace,"")
+        CleanFiles(arcpy.env.scratchGDB)
+        gp.Delete_management(arcpy.env.scratchGDB,"")
 
         return outRoads
 
@@ -570,7 +554,7 @@ def identifyCores(theTable, workspace, minCoreSize):
         if workspace == '':
                 workspace = arcpy.env.Workspace
 
-        elif workspace == "in_memory":
+        elif workspace == arcpy.env.scratchGDB:
                 sumTable = workspace + os.sep + "Core_summary"
                 iTable = workspace + os.sep + "Iteration_summary"
         else:
@@ -692,6 +676,8 @@ def MakeTable(outWorkspace, outTable):
         return nTable
 
 ## Create random pattern within a constraint layer
+
+# ****************************** NEED TO FIX .shp BELOW ******************************************************
 def RandomPattern(Workspace, aExtent, constraint, numHouses):
         # Process: Create Random Points...
         gp.AddMessage("\tCreating random pattern of " + str(numHouses) + " houses...")
@@ -723,10 +709,10 @@ def RandomPattern(Workspace, aExtent, constraint, numHouses):
 ###Rescale input rasters to a spcecified range
 def Rescale(inRaster,outRaster, Min, Max):
     
-##    tmpRaster = tWorkspace + os.sep + 'tmpRast1'
-##    tmpRaster2 = tWorkspace + os.sep + 'tmpRast2'
-##    tmpRaster3 = tWorkspace + os.sep + 'tmpRast3'
-##    tmpRaster4 = tWorkspace + os.sep + 'tmpRast4'
+##    tmpRaster = arcpy.env.scratchGDB + os.sep + 'tmpRast1'
+##    tmpRaster2 = arcpy.env.scratchGDB + os.sep + 'tmpRast2'
+##    tmpRaster3 = arcpy.env.scratchGDB + os.sep + 'tmpRast3'
+##    tmpRaster4 = arcpy.env.scratchGDB + os.sep + 'tmpRast4'
 ##    Max = str(Max)
 ##    Min = str(Min)
     Mult = float(Max)-float(Min)
@@ -778,9 +764,9 @@ def Rescale(inRaster,outRaster, Min, Max):
     return(plusRaster)
 
 ###Rescale input rasters to a range of 0-100 OLD!!!
-##def Rescale(inRaster,outRaster,tWorkspace):
+##def Rescale(inRaster,outRaster,arcpy.env.scratchGDB):
 ##    
-##    tmpRaster = tWorkspace + os.sep + 'tmpRast1'
+##    tmpRaster = arcpy.env.scratchGDB + os.sep + 'tmpRast1'
 ##    tmpRaster2 = tWorkspace + os.sep + 'tmpRast2'
 ##    
 ##    gp.AddMessage("Rescaling " + inRaster + "...")        
@@ -814,29 +800,29 @@ def Rescale(inRaster,outRaster, Min, Max):
 
 
 # Run Monte Carlo Simulation for corridor density
-def RunCorridorSimulation (i,tWorkspace, aExtent, constraint, numHouses, nTable, theField, pointLayer):
+def RunCorridorSimulation (i, aExtent, constraint, numHouses, nTable, theField, pointLayer):
 
         #create local variables
 
-        w = tWorkspace.rsplit(os.sep + "",1)
+        w = arcpy.env.scratchGDB.rsplit(os.sep + "",1)
         outWorkspace = w[0]
         theField = "MEAN_" + theField
         theField = gp.ValidateFieldName(theField)
 
-        if gp.Exists(tWorkspace + os.sep + "random_temp.shp"):
-                gp.Delete_management(tWorkspace + os.sep + "random_temp.shp","")
+        if gp.Exists(arcpy.env.scratchGDB + os.sep + "random_temp"):
+                gp.Delete_management(arcpy.env.scratchGDB + os.sep + "random_temp","")
 
 
         #Iterate model for monte carlo simulation of random points
         for a in range(i):
                 gp.AddMessage("\tRunning " + str(a + 1) + " of " + str(i) + " iterations...")
 
-                CleanFiles(tWorkspace)
+                CleanFiles(arcpy.env.scratchGDB)
 
-                rPoints = RandomPattern(tWorkspace, aExtent, constraint, numHouses)
+                rPoints = RandomPattern(arcpy.env.scratchGDB, aExtent, constraint, numHouses)
 
                 # Identify core areas based on user-defined area requirements
-                iTable = CalcCorridorDistance(rPoints, tWorkspace)
+                iTable = CalcCorridorDistance(rPoints, arcpy.env.scratchGDB)
 
                 if iTable:
                         # Add Houses Field
@@ -846,24 +832,20 @@ def RunCorridorSimulation (i,tWorkspace, aExtent, constraint, numHouses, nTable,
                         gp.CalculateField_management(iTable, "HOUSES", str(numHouses), "VB", "")
                         
                         # Process: Append...
-                        gp.Append_management(os.path.join(tWorkspace, iTable), nTable, "NO_TEST", "", "")
+                        gp.Append_management(os.path.join(arcpy.env.scratchGDB, iTable), nTable, "NO_TEST", "", "")
 
                 else:
                         return False
                 
         # Determine mean area conserved under simulation run
         gp.AddMessage("\tCalculating mean corridor width...")
-        meanDist = CalcMeans(nTable, tWorkspace, theField, numHouses)
+        meanDist = CalcMeans(nTable, arcpy.env.scratchGDB, theField, numHouses)
         return meanDist
 
 # Run Monte Carlo Simulation
 # NOTE: random variable is no longer used but may be converted to a 'pattern' variable to allow users to select other point patterns
-def RunSimulation (i,tWorkspace, aExtent, constraint, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, pointLayer, roadLayer, random, outRdCost, backlink, existRoads):
-
-        #create local variables
-
-##        w = tWorkspace.rsplit(os.sep + "",1)
-##        outWorkspace = w[0]
+def RunSimulation (i, aExtent, constraint, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, pointLayer, roadLayer, random, outRdCost, backlink, existRoads):
+# RunSimulation(i,gp.ScratchWorkspace, aExtent, constraintLayer, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, "", "", True, outRdCost, backlink, existRoads)
 
         #Iterate model for monte carlo simulation of random points
         for a in range(i):
@@ -871,7 +853,7 @@ def RunSimulation (i,tWorkspace, aExtent, constraint, numHouses, minCoreSize, st
 
                 if pointLayer == "" or pointLayer == "#":
                         pointDelete = 1                                        
-                        rPoints = RandomPattern(tWorkspace, aExtent, constraint, numHouses)
+                        rPoints = RandomPattern(arcpy.env.scratchGDB, aExtent, constraint, numHouses)
                         desc = arcpy.Describe(rPoints)
                         t = desc.DataType
                         c = desc.CatalogPath
@@ -882,28 +864,28 @@ def RunSimulation (i,tWorkspace, aExtent, constraint, numHouses, minCoreSize, st
                 # Generate simulated road network
                 if roadLayer == '':
                         lineDelete = 1
-                        lineLayer = tWorkspace + os.sep + "lineLayer.shp"
+                        lineLayer = arcpy.env.scratchGDB + os.sep + "lineLayer"
                         simRoads = GenRoads (rPoints, outRdCost, backlink, "")
                         arcpy.AddMessage("Merging simulated roads with existing roads...")
-##                        arcpy.AddWarning("CreateObject")
-##                        vt = arcpy.createobject("ValueTable")
-##                        arcpy.AddWarning("AddRow")
-##                        vt.AddRow(existRoads)
-##                        arcpy.AddWarning(vt)
-##                        vt.AddRow(simRoads)
-##                        arcpy.AddWarning(vt)
-##                        roadLayer = arcpy.Merge_management (vt, lineLayer, "")
+        ##                        arcpy.AddWarning("CreateObject")
+        ##                        vt = arcpy.createobject("ValueTable")
+        ##                        arcpy.AddWarning("AddRow")
+        ##                        vt.AddRow(existRoads)
+        ##                        arcpy.AddWarning(vt)
+        ##                        vt.AddRow(simRoads)
+        ##                        arcpy.AddWarning(vt)
+        ##                        roadLayer = arcpy.Merge_management (vt, lineLayer, "")
                         roadLayer = arcpy.Merge_management (existRoads + ";" + simRoads, lineLayer, "")
                 else:
                         lineDelete = 0
 
                 # Process point pattern to simulate habitat cores
-                sCores = GenerateCores(rPoints, tWorkspace, aExtent, stinfDistance, rdinfDistance, roadLayer) #, inDEM, existRoads)
+                sCores = GenerateCores(rPoints, arcpy.env.scratchGDB, aExtent, stinfDistance, rdinfDistance, roadLayer) #, inDEM, existRoads)
                 # If sCores = False, then extent is empty and percent area conserved equals zero.
                 if sCores:
 
                         # Identify core areas based on user-defined area requirements
-                        iTable = identifyCores(sCores, tWorkspace, minCoreSize)
+                        iTable = identifyCores(sCores, arcpy.env.scratchGDB, minCoreSize)
                         numCores = iTable[0]
                         iTable = iTable[1]
                         
@@ -914,7 +896,7 @@ def RunSimulation (i,tWorkspace, aExtent, constraint, numHouses, minCoreSize, st
                         arcpy.AddField_management(iTable, "PRCNT_AREA", "DOUBLE", "18", "4", "", "", "", "NON_REQUIRED", "")
 
                 else:
-                        iTable = MakeTable(tWorkspace, "Iteration_summary")
+                        iTable = MakeTable(arcpy.env.scratchGDB, "Iteration_summary")
                         numCores = 0
                
                 # Process: Calculate Number of Houses...
@@ -940,7 +922,7 @@ def RunSimulation (i,tWorkspace, aExtent, constraint, numHouses, minCoreSize, st
                 
         # Determine mean area conserved under simulation run
         arcpy.AddMessage("\tCalculating percent area conserved...")
-        meanPrcntArea = CalcMeans(nTable, tWorkspace, "PRCNT_AREA", numHouses)
+        meanPrcntArea = CalcMeans(nTable, arcpy.env.scratchGDB, "PRCNT_AREA", numHouses)
         arcpy.AddMessage(str(int(meanPrcntArea)) + "% of area conserved with " + str(numHouses) + " houses...\n")
-        
+
         return meanPrcntArea, rPoints
