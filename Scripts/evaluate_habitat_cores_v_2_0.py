@@ -21,6 +21,7 @@
 #
 # evaluate_habitat_cores.py (version 1.0 beta)
 # Created on: Mon Nov 24 2008 04:08:09 PM
+# Modified Jan 29 2016 to make compatible with geodatabases
 #
 # Written by Brent L. Brock, Landscape Ecologist, Craighead Environmental Research Institute
 #
@@ -60,26 +61,14 @@ stinfDistance = sys.argv[5]
 rdinfDistance = sys.argv[6]
 outputUnits = sys.argv[7]
 outShapefile = sys.argv[8]
-s = str(outShapefile).rsplit("\\",1)
+s = str(outShapefile).rsplit(os.sep,1)
 outWorkspace = s[0]
 outTable = s[1]
 
 
 # Create temporary workspaces
 #scratchWS = arcpy.env.scratchWorkspace
-scratchWS = "in_memory"
-if scratchWS:
-    #tWorkspace = fl.CreateTempWorkspace(scratchWS)
-    #sWorkspace = fl.CreateTempWorkspace(scratchWS)
-    sWorkspace = "in_memory"
-    tWorkspace = "in_memory"
-else:
-    # Set output workspace
-    arcpy.Workspace = outWorkspace
-    tWorkspace = fl.CreateTempWorkspace(outWorkspace)
-    sWorkspace = fl.CreateTempWorkspace(outWorkspace)
-arcpy.ScratchWorkspace = tWorkspace
-
+tWorkspace = arcpy.env.scratchGDB
 # Local variables...
 area = minCoreSize.split(" ")
 minCoreSize = str(fl.ConvertAreaToMeters(area[0], area[1]))
@@ -88,6 +77,7 @@ if outputUnits == "" or outputUnits == "#":
 arcpy.AddMessage("Minimum Patch Size: " + str(minCoreSize) + " square meters...")
 del area
 
+# Convert influence distances to meters
 stdistance = stinfDistance.split(" ")
 stinfDistance = str(fl.ConvertDistanceToMeters(stdistance[0], stdistance[1]))
 arcpy.AddMessage("Structure Distance: " + str(stinfDistance) + " meters...")
@@ -98,18 +88,15 @@ rdinfDistance = str(fl.ConvertDistanceToMeters(rddistance[0],rddistance[1]))
 arcpy.AddMessage("Road Distance: " + str(rdinfDistance) + " meters...")
 del rddistance
 
-cExtent = "in_memory\\aExtent_copy.shp" #Temporary copy of analysis extent for manipulation
+cExtent = "in_memory\\aExtent_copy" #Temporary copy of analysis extent for manipulation
 ## nTable = outWorkspace+"\\"+outTable #Final output table
 nTable = "in_memory\\xxnTable" #Temporary output table
+nTable = nTable
 i = 1 # Number of iterations to run
 
 constraintLayer = aExtent
 
-### If constraint layer is specified, make copy and clip to aExtent
-##if constraintLayer == "#":
-##    constraintLayer = aExtent
-
-currentDirectory = sys.path[0]
+currentDirectory = sys.path[0] #*************find out why this is here
 
 numHouses = fl.GetNumHouses(pointLayer, aExtent)
 if numHouses == 0:
@@ -117,18 +104,8 @@ if numHouses == 0:
 else:
     arcpy.AddMessage(str(numHouses) + " structures found within analysis area")
 
-
-# numHouses = fl.GetNumHouses(pointLayer, aExtent)
-
 ##Calculate Total Area and store in variable 'tArea'##
 arcpy.AddMessage("Caculating area of analysis extent...")
-# Make copy of analysis extent layer to modify
-##try:
-##    arcpy.Copy_management(aExtent, cExtent, "ShapeFile")
-##except:
-##    a = arcpy.MakeFeatureLayer_management(aExtent, "aLayer", "", "", "Input_FID Input_FID VISIBLE NONE")
-##    arcpy.CopyFeatures_management(a, cExtent)
-
 cExtent = arcpy.MakeFeatureLayer_management(aExtent, "cLayer", "", "", "Input_FID Input_FID VISIBLE NONE")
     
 # Add 'Area' Field and calculate Area
@@ -147,7 +124,8 @@ if not arcpy.Exists(nTable):
 
 # Get result 
 arcpy.AddMessage("Begin simulation ...")
-sim = fl.RunSimulation(i,tWorkspace, aExtent, constraintLayer, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, pointLayer, roadLayer, False, "", "", "")
+# sim = fl.RunSimulation(i, aExtent, constraintLayer, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, pointLayer, roadLayer, False, "", "", "")
+sim = fl.RunSimulation(i, aExtent, constraintLayer, numHouses, minCoreSize, stinfDistance, rdinfDistance, nTable, tArea, pointLayer, roadLayer, False, "", "", "")
 result = sim[0]
 
 # Calculate density in acres from the solution
@@ -164,8 +142,8 @@ arcpy.AddMessage("\tAppending area calculations to core shapefile table...")
 arcpy.env.qualifiedFieldNames = "UNQUALIFIED"
 arcpy.AddField_management(nTable, "CORE", "SHORT", "", "", "", "", "", "", "")
 arcpy.CalculateField_management (nTable, "CORE", "1", "PYTHON", "")
-arcpy.Dissolve_management (tWorkspace + "\\xxcoresLayer", tWorkspace + "\\xxcoresLayer2", "CORE") 
-arcpy.MakeFeatureLayer_management (tWorkspace + "\\xxcoresLayer2", "jLayer")
+arcpy.Dissolve_management ("in_memory" + "\\xxcoresLayer", "in_memory" + "\\xxcoresLayer2", "CORE") 
+arcpy.MakeFeatureLayer_management ("in_memory" + "\\xxcoresLayer2", "jLayer")
 arcpy.AddJoin_management ("jLayer", "CORE", nTable, "CORE")
 outShape2 = arcpy.CopyFeatures_management("jLayer", outShapefile)
 arcpy.AddField_management(outShape2, "AREA", "DOUBLE", "", "", "", "", "", "", "")
@@ -191,14 +169,11 @@ params = arcpy.GetParameterInfo()
     
 # Clean up temporary workspace
 try:
-    fl.CleanFiles(sWorkspace)
-    #fl.CleanFiles(tWorkspace)
-    #arcpy.Delete_management(tWorkspace,"")
-    arcpy.Delete_management(sWorkspace,"")
+    arcpy.Delete_management("in_memory")
 except:
     pass
 try:
-    arcpy.Delete_management("in_memory")
+    arcpy.Delete_management(arcpy.env.scratchGDB + "\\pntDensity")
 except:
     pass
 
